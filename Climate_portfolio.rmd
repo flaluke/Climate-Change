@@ -1,0 +1,138 @@
+---
+title: "Global Climate Change Analysis (2020-2025)"
+author: "Fluke Siwakorn"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    theme: spacelab
+---
+
+# **Global Climate Trends by Continent (2020-2025)**
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(plotly)
+library(scales)
+library(readxl) 
+
+df <- read_excel("Global_Climate_Change_Data_2020_2025.xlsx", sheet = 1)
+
+df <- df %>%
+  rename(
+    Avg_Temperature = `Avg_Temperature(°C)`,
+    CO2_Emissions = `CO2_Emissions(Mt)`,
+    Sea_Level_Rise = `Sea_Level_Rise(mm)`
+  )
+
+df_time <- df %>%
+  group_by(Year, Continent) %>%
+  summarise(
+    Avg_Temp = mean(Avg_Temperature),
+    Avg_CO2 = mean(CO2_Emissions),
+    Avg_Sea_Level = mean(Sea_Level_Rise),
+    Avg_Risk = mean(Climate_Risk_Index),
+    .groups = 'drop'
+  )
+
+df_latest <- df %>% filter(Year == 2025)
+
+```
+
+## **Row 1: Temperature and Sea Level Rise (Time-Series)** 
+
+### Chart A : **แนวโน้มอุณหภูมิเฉลี่ย (°C)**
+
+```{r}
+p_temp <- ggplot(df_time, aes(x = Year, y = Avg_Temp, color = Continent, group = Continent,
+                              text = paste("Year:", Year, "<br>Temp:", round(Avg_Temp, 2), "°C"))) +
+  geom_line(linewidth = 1) +
+  geom_point() +
+  scale_x_continuous(breaks = unique(df_time$Year)) +
+  labs(y = "Average Temperature (°C)", color = "Continent") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+ggplotly(p_temp, tooltip = "text")
+
+```
+
+### Chart B : **แนวโน้มระดับน้ำทะเลที่เพิ่มขึ้น (mm)**
+
+```{r}
+p_sea <- ggplot(df_time, aes(x = Avg_Temp, y = Avg_Sea_Level, color = Continent,
+                             text = paste("Avg Temp:", round(Avg_Temp,2),"°C", "<br>Sea Rise:", round(Avg_Sea_Level, 2), "mm"))) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1, linetype = "solid") +
+  geom_point() +
+  labs(x = "Average Temperature (°C)", y = "Average Sea Level Rise (mm)", color = "Continent") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+ggplotly(p_sea, tooltip = "text")
+
+```
+
+## **Row 2: Emissions, Risk, and Correlation**
+
+### Chart C : **สัดส่วน CO₂ Emissions ในปี 2025**
+
+```{r}
+# สมมติฐาน: df คือ Data Frame ที่โหลดมา และมีคอลัมน์ชื่อ "CO2_Emissions"
+
+# ---------------------------------------------------------------------
+# ขั้นตอนที่ 1: สรุปและคำนวณคอลัมน์ที่จำเป็น (Total_CO2 และ Percentage)
+# ---------------------------------------------------------------------
+df_co2_final <- df %>%
+  # 1. จัดกลุ่มตามทวีป
+  group_by(Continent) %>%
+  # 2. คำนวณผลรวม (Total_CO2)
+  summarize(
+    Total_CO2 = sum(CO2_Emissions, na.rm = TRUE), # <<< ใช้ CO2_Emissions ที่ถูกต้อง
+    .groups = 'drop'
+  ) %>%
+  # 3. คำนวณเปอร์เซ็นต์ (Percentage)
+  mutate(
+    Percentage = Total_CO2 / sum(Total_CO2)
+  )
+
+# ---------------------------------------------------------------------
+# ขั้นตอนที่ 2: จัดเรียงและสร้างกราฟ (Bar Chart)
+# ---------------------------------------------------------------------
+df_co2_final <- df_co2_final %>%
+  # 4. จัดเรียง Continent ตาม Total_CO2
+  mutate(Continent = forcats::fct_reorder(Continent, Total_CO2))
+
+p_co2_bar <- ggplot(df_co2_final, aes(x = Continent, y = Total_CO2, fill = Continent,
+                                text = paste(Continent, "<br>", scales::percent(Percentage, accuracy = 0.1), " (", round(Total_CO2, 0), " Mt)"))) +
+  
+  geom_bar(width = 0.8, stat = "identity") +
+  
+  labs(x = "Continent", y = "Total CO2 Emissions (Mt)", fill = "Continent") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# ---------------------------------------------------------------------
+# ขั้นตอนที่ 3: การแปลงเป็น Plotly (ปัญหาเดิมที่เคยเจอควรถูกแก้ไขแล้ว)
+# ---------------------------------------------------------------------
+ggplotly(p_co2_bar, tooltip = "text") %>%
+  layout(title = list(text = 'CO2 Emissions by Continent (2025)'))
+
+
+```
+
+### Chart D : **ความสัมพันธ์ระหว่างอุณหภูมิและดัชนีความเสี่ยง (2025)**
+
+```{r}
+p_risk <- ggplot(df_time, aes(x = Year, y = Avg_Risk, fill = Continent, group = Continent,
+                                text = paste("Year:", Year, "<br>Continent:", Continent, "<br>Risk Index:", round(Avg_Risk, 1)))) +
+  geom_area(alpha = 0.6, position = 'identity') +
+  geom_line(color = "black", position = 'identity', linewidth = 0.5) +
+  scale_x_continuous(breaks = unique(df_time$Year)) +
+  labs(x = "Year", y = "Average Climate Risk Index", fill = "Continent") +
+  theme_minimal()+
+  theme(legend.position = "bottom")
+
+ggplotly(p_risk, tooltip = "text")
+
+```
